@@ -1,8 +1,23 @@
+{-
+AUTHOR: Augusto Peres
+
+Description: This file implements a epsilon-greedy algorithm. The agent simply
+             learns how to pull the arms on a multi-armed bandit.
+             This file also contains my first attempt at State Monads.
+
+             We use the state monad to be able to pull arms and get pseudo
+             random rewards by updating the StdGen inside each arm. This
+             allows for two things:
+                 * We escape the IO monad and keep our code pure
+                 * We can pull arms several times always with a new random
+                   seed while at the same time preventing passing around seed
+                   as function arguments
+-}
 import           Control.Monad.State
+import           Data.List           (maximumBy)
+import           Data.Ord            (comparing)
 import           Data.Random
 import           System.Random
-import Data.List (maximumBy)
-import Data.Ord (comparing)
 
 
 type Action = Int
@@ -68,19 +83,18 @@ playBandit n =
 --   Output: A list with rewards
 --   This serves just to understand the state monad. Is not used in the learning
 getRewardsBandit :: Bandit -> [Action] -> [Reward]
-getRewardsBandit b actions =
-  -- mapM :: (action -> (State Bandit) Reward) -> [actions] -> (State Bandit) [Reward]
-  -- this is equivalent to: evalState (sequence (map playBandit) action) b =
-  --                        evalState (sequence [playBandit a1, ..., playBandit an]) b =
-  --                        evalState (sequence [(State Bandit) Reward, ..., (State Bandit) Reward]) b =
-  --                        evalState ((State Bandit) [Reward]) b
-  -- sequence :: Monad m => [m a] -> m [a]
-  -- sequence [] = return [] -- state (\s -> ([], s))
-  -- sequence (x:xs) = do
-  --                 z <- x
-  --                 y <- sequence xs
-  --                 return (z:y) -- state (\s -> (z:y, s))
-  evalState (mapM (playBandit) actions) b
+getRewardsBandit b actions = evalState (mapM (playBandit) actions) b
+-- mapM :: (action -> (State Bandit) Reward) -> [actions] -> (State Bandit) [Reward]
+-- this is equivalent to: evalState (sequence (map playBandit) action) b =
+--                        evalState (sequence [playBandit a1, ..., playBandit an]) b =
+--                        evalState (sequence [(State Bandit) Reward, ..., (State Bandit) Reward]) b =
+--                        evalState ((State Bandit) [Reward]) b
+-- sequence :: Monad m => [m a] -> m [a]
+-- sequence [] = return [] -- state (\s -> ([], s))
+-- sequence (x:xs) = do
+--                 z <- x
+--                 y <- sequence xs
+--                 return (z:y) -- state (\s -> (z:y, s))
 
 -- | pullArm :: State Arm Reward is pretty much equivalent to a function
 --   arm -> (reward, arm). Therefore we simply define pull arm as being a function
@@ -99,17 +113,16 @@ getRewardSequence a n = evalState (replicateM n pullArm) a
 -- | Input: The arm, the learner, the number of plays
 --   Output: A list with [(action, reward)]
 learn :: Bandit -> GreedyLearner -> Int -> [(Action, Reward)]
-learn b agent n =
-  evalState (replicateM n onePass) (agent, b)
+learn b agent n = evalState (replicateM n onePass) (agent, b)
 
 -- | Makes one pass of the game
 onePass :: State (GreedyLearner, Bandit) (Action, Reward)
 onePass = do
   (learner, bandit) <- get
   let (action, newAgent) = runState getAction learner
-      reward = evalState (playBandit action) bandit
-      newBandit = execState (playBandit action) bandit
-      newAgent' = execState  (updateQFunction newAgent action reward) learner
+      reward             = evalState (playBandit action) bandit
+      newBandit          = execState (playBandit action) bandit
+      newAgent'          = execState  (updateQFunction newAgent action reward) learner
   put $ (newAgent', newBandit)
   return (action, reward)
 
