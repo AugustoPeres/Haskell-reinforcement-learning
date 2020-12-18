@@ -1,13 +1,13 @@
 module FrozenLake
-  (FrozenLake)
+  ( FrozenLake
+  , makeGame
+  )
   where
 
 import           Control.Monad.State
 import           Data.Random         (normal, sampleState, uniform)
-import           System.Random       (StdGen)
+import           System.Random       (StdGen, mkStdGen)
 
--- | tiles are: Starting Point, Frozen, Hole, Goal
-data Tile = S | F | H | G deriving (Eq, Show)
 
 -- | The frozen lake game instance. We keep the gameGen inside so that we can
 -- use the state monad whenever random moves need to be performed on the game.
@@ -19,8 +19,15 @@ data FrozenLake = FrozenLake
   , holePositions  :: [(Int, Int)]
   , gameGen        :: StdGen } deriving Show
 
-emptyLake :: FrozenLake
-emptyLake = FrozenLake { holePositions = [] }
+emptyLake :: (Int, Int) -> FrozenLake
+emptyLake d =
+  FrozenLake { dims = d
+             , playerPosition = (0,0)
+             , goalPosition = (0, 0)
+             , holePositions = []
+             , gameGen = mkStdGen 1
+             }
+
 -- | Input:
 --      * The dimensions of the board
 --      * The number of holes
@@ -28,7 +35,7 @@ emptyLake = FrozenLake { holePositions = [] }
 --   Output: An instance of the frozen lake game
 makeGame :: (Int, Int) -> Int -> StdGen -> FrozenLake
 makeGame size n g = execState (setPlayer >> setGoal >> setHoles n)
-                              (emptyLake {gameGen = g, dims = size})
+                              ((emptyLake size) {gameGen = g})
 
 setHoles :: Int -> -- The number of holes to place
             State FrozenLake () -- the new game state
@@ -37,8 +44,8 @@ setHoles n = forM_ [1..n] (\_ -> setHole)
 setHole :: State FrozenLake ()
 setHole = do
   game <- get
-  let (x, g)  = sampleState (uniform 0 (fst $ dims game)) (gameGen game)
-      (y, g') = sampleState (uniform 0 (snd $ dims game)) g
+  let (x, g)   = sampleState (uniform 0 (fst $ dims game)) (gameGen game)
+      (y, g')  = sampleState (uniform 0 (snd $ dims game)) g
       newHoles = [(x, y)] ++ holePositions game
   put $ game {holePositions = newHoles, gameGen = g'}
 
