@@ -1,10 +1,12 @@
 module FrozenLake
-  ( FrozenLake
-  , Action
-  , GameState
+  ( FrozenLake(playerPosition, dims)
+  , Action(..)
+  , GameState(..)
   , makeGame
   , makeMove
   , getGameState
+  , getReward
+  , getTileList
   )
   where
 
@@ -23,9 +25,21 @@ data FrozenLake = FrozenLake
   , holePositions  :: [(Int, Int)]
   , gameGen        :: StdGen } deriving Show
 
-data Action = U | D | L | R deriving (Eq, Show)
+data Action = U | D | L | R | KeepStill deriving (Eq, Show, Ord)
 
 data GameState = OnGoing | Won | Lost deriving (Eq, Show)
+
+getTileList :: FrozenLake -> [(Int, Int)]
+getTileList l =
+  [(x, y) | x <- [0..n], y <- [0..m]]
+  where (xl, yl) = dims l
+        (n, m)   = (xl - 1, yl - 1)
+
+getReward :: FrozenLake -> Float
+getReward game
+  | getGameState game == Lost = -1
+  | getGameState game == Won  = 1
+  | otherwise                 = 0
 
 getGameState :: FrozenLake -> GameState
 getGameState l
@@ -51,6 +65,7 @@ makeMove a = do
                     , gameGen        = newGen}
           R -> game { playerPosition = (if val >= 0.1 then minimum [n,x+1] else minimum [n,x+2], y)
                     , gameGen        = newGen}
+          _ -> game
 
 emptyLake :: (Int, Int) -> FrozenLake
 emptyLake d =
