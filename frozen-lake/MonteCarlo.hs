@@ -1,11 +1,11 @@
 import           Control.Monad.State
+import           Data.List
+import qualified Data.Map.Lazy       as M
+import           Data.Maybe
+import           Data.Ord
 import           Data.Random         (sampleState, uniform)
 import           FrozenLake
 import           System.Random       (StdGen, mkStdGen)
-import qualified Data.Map.Lazy as M
-import Data.Maybe
-import Data.Ord
-import Data.List
 
 data Carlo s = Carlo
   { policy  :: M.Map s Action
@@ -18,7 +18,8 @@ data Carlo s = Carlo
 
 type AgentState = (Int, Int)
 
--- | Simply creates an agent from a game
+-- | Simply creates an agent from a game. Receives the epsilon of the
+-- agent (probability of exploration)
 agentFromGame :: FrozenLake -> Float -> Carlo AgentState
 agentFromGame game eps=
   Carlo { policy  = M.fromList [(s, U) | s <- tiles]
@@ -31,6 +32,7 @@ agentFromGame game eps=
 
 -- | Input: Initial game, Initial agent, number of moves
 --   Output: An episode in the from state action reward
+-- The episode is returned as [(s0, a0, r1),..., (sn-1, an-1, rn)].
 episode :: FrozenLake -> Carlo AgentState -> Int -> [(AgentState, Action, Float)]
 episode game agent n = evalState (forM [1..n] (\_ -> agentTurn)) (game, agent)
 
