@@ -1,11 +1,15 @@
 module FrozenLake
   ( FrozenLake
+  , Action
+  , GameState
   , makeGame
+  , makeMove
+  , getGameState
   )
   where
 
 import           Control.Monad.State
-import           Data.Random         (normal, sampleState, uniform)
+import           Data.Random         (sampleState, uniform)
 import           System.Random       (StdGen, mkStdGen)
 
 
@@ -18,6 +22,35 @@ data FrozenLake = FrozenLake
   , goalPosition   :: (Int, Int)
   , holePositions  :: [(Int, Int)]
   , gameGen        :: StdGen } deriving Show
+
+data Action = U | D | L | R deriving (Eq, Show)
+
+data GameState = OnGoing | Won | Lost deriving (Eq, Show)
+
+getGameState :: FrozenLake -> GameState
+getGameState l
+  | playerPosition l `elem` holePositions l = Lost
+  | playerPosition l == goalPosition l      = Won
+  | otherwise                               = OnGoing
+
+-- | This function receives an action and moves the player. Because the ice is
+--   slippery the player makes, with probability 0.1 may move one extra square
+--   in the chosen direction.
+makeMove :: Action -> State FrozenLake ()
+makeMove a = do
+  game <- get
+  let (x, y)        = playerPosition game
+      (val, newGen) = sampleState (uniform 0 1) (gameGen game) :: (Float, StdGen)
+      (n, m)        = dims game
+  put $ case a of
+          U -> game { playerPosition = (x, if val >= 0.1 then maximum [0,y-1] else maximum [0,y-2])
+                    , gameGen        = newGen}
+          D -> game { playerPosition = (x, if val >= 0.1 then minimum [m,y+1] else maximum [m,y+2])
+                    , gameGen        = newGen}
+          L -> game { playerPosition = (if val >= 0.1 then maximum [0,x-1] else maximum [0,x-2], y)
+                    , gameGen        = newGen}
+          R -> game { playerPosition = (if val >= 0.1 then minimum [n,x+1] else minimum [n,x+2], y)
+                    , gameGen        = newGen}
 
 emptyLake :: (Int, Int) -> FrozenLake
 emptyLake d =
