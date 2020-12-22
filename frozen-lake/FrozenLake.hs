@@ -7,6 +7,7 @@ module FrozenLake
   , getGameState
   , getReward
   , getTileList
+  , gameToString
   )
   where
 
@@ -24,6 +25,16 @@ data FrozenLake = FrozenLake
   , goalPosition   :: (Int, Int)
   , holePositions  :: [(Int, Int)]
   , gameGen        :: StdGen } deriving Show
+
+gameToString :: FrozenLake -> String
+gameToString lake =
+  unlines $ map f [[(x, y) | x<-[0..(n-1)] ]| y<-[0..(m-1)]]
+  where (n, m) = dims lake
+        f l = join $ map g l
+        g x
+          | x ==      goalPosition lake = "  G  "
+          | x `elem` holePositions lake = "  O  "
+          | otherwise                   = "  F  "
 
 data Action = U | D | L | R | KeepStill deriving (Eq, Show, Ord)
 
@@ -92,21 +103,21 @@ setHoles n = forM_ [1..n] (\_ -> setHole)
 setHole :: State FrozenLake ()
 setHole = do
   game <- get
-  let (x, g)   = sampleState (uniform 0 (fst $ dims game)) (gameGen game)
-      (y, g')  = sampleState (uniform 0 (snd $ dims game)) g
+  let (x, g)   = sampleState (uniform 0 ((fst $ dims game) - 1)) (gameGen game)
+      (y, g')  = sampleState (uniform 0 ((snd $ dims game) - 1)) g
       newHoles = [(x, y)] ++ holePositions game
   put $ game {holePositions = newHoles, gameGen = g'}
 
 setGoal :: State FrozenLake ()
 setGoal = do
   game <- get
-  let (x, g)  = sampleState (uniform 0 (fst $ dims game)) (gameGen game)
-      (y, g') = sampleState (uniform 0 (snd $ dims game)) g
+  let (x, g)  = sampleState (uniform 0 ((fst $ dims game) - 1)) (gameGen game)
+      (y, g') = sampleState (uniform 0 ((snd $ dims game) - 1)) g
   put $ game {goalPosition = (x, y), gameGen = g'}
 
 setPlayer :: State FrozenLake ()
 setPlayer = do
   game <- get
-  let (x, g)  = sampleState (uniform 0 (fst $ dims game)) (gameGen game)
-      (y, g') = sampleState (uniform 0 (snd $ dims game)) g
+  let (x, g)  = sampleState (uniform 0 ((fst $ dims game) - 1)) (gameGen game)
+      (y, g') = sampleState (uniform 0 ((snd $ dims game) - 1)) g
   put $ game {playerPosition = (x, y), gameGen = g'}

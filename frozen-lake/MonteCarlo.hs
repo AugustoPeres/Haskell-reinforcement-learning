@@ -1,8 +1,6 @@
 import           Control.Monad.State
-import           Data.List
 import qualified Data.Map.Lazy       as M
 import           Data.Maybe
-import           Data.Ord
 import           Data.Random         (sampleState, uniform)
 import           FrozenLake
 import           System.Random       (StdGen, mkStdGen)
@@ -22,6 +20,7 @@ type AgentState = (Int, Int)
 -- agent (probability of exploration)
 agentFromGame :: FrozenLake -> Float -> Carlo AgentState
 agentFromGame game eps=
+  makeGreedy $
   Carlo { policy  = M.fromList [(s, U) | s <- tiles]
         , qValues = M.fromList [((s, a), 0) | s <- tiles, a <- [U, D, L, R, KeepStill]]
         , states  = tiles
@@ -30,9 +29,11 @@ agentFromGame game eps=
         , gen     = mkStdGen 1}
   where tiles = getTileList game
 
+-- Prints a policy in a way that is readable for the particular case of the
+-- frozen lake environment.
 policyToString :: Carlo AgentState -> (Int, Int) -> String
 policyToString agent (n, m) =
-  unlines $ map f [[(y, x) | x<-[0..n] ]| y<-[0..n]]
+  unlines $ map f [[(x, y) | x<-[0..n] ]| y<-[0..m]]
   where f l = join $ map g l
         g s = case policy agent M.!? s of
           Nothing         -> " ERRO "
@@ -42,13 +43,22 @@ policyToString agent (n, m) =
           Just  U         -> "  U   "
           Just  KeepStill -> "  *   "
 
+-- | Receives:
+--    * A frozen lake
+--    * An agent
+--    * The number of episodes
+--    * The length of each episode
+--    * The learning rate
+--  Returns: An agent after having learned the proper policy
 learn :: FrozenLake -> Carlo AgentState -> Int -> Int -> Float -> Carlo AgentState
 learn g ag n l gamma =
   go g ag M.empty n l gamma
   where go _ agent _ 0 _  _ = agent
         go game agent rets n' l' gamm =
-          let (newAgent, newReturns) = updateFromEpisode agent (reverse $ episode game agent l') gamm rets
-          in go game newAgent newReturns (n'-1) l' gamm
+          let --(newAgent, newReturns) = updateFromEpisode agent (reverse $ episode game agent l') gamm rets
+              (ep, (newGame, newAgent)) = runState (episode l) (game, agent) -- this way we also update the gens
+              (newAgent', newReturns) = updateFromEpisode newAgent (reverse ep) gamm rets
+          in go newGame newAgent' newReturns (n'-1) l' gamm
 
 -- | Input: An agent, An episode, a Float (gamma) denoting the learning rate
 -- Output: The agent with the updated qValues
@@ -65,17 +75,24 @@ updateFromEpisode ag ep gam rets =
           then go agent xs returns (gamma*ret + r) gamma
           else go agent xs (M.insertWith (++) (s, a) [gamma*ret + r] returns) (gamma*ret + r) gamma
 
+-- This is just an aux function that receives the returns and an agent and
+-- changes the Q values of each action state pair
 changeQValues :: Carlo AgentState -> M.Map (AgentState, Action) [Float] -> Carlo AgentState
 changeQValues agent returns =
   agent { qValues = newQValues }
   where newQValues = foldr (\x y -> M.updateWithKey f x y) (qValues agent) (M.keys returns)
         f key _ = do {l <- returns M.!? key ; return $  sum l / (fromIntegral $ length l) }
 
+-- | Uses episode and extracts the values from the state monad to generate an
+-- episode
+evalEpisode :: FrozenLake -> Carlo AgentState -> Int -> [(AgentState, Action, Float)]
+evalEpisode game agent n = evalState (episode n) (game, agent)
+
 -- | Input: Initial game, Initial agent, number of moves
 --   Output: An episode in the from state action reward
 -- The episode is returned as [(s0, a0, r1),..., (sn-1, an-1, rn)].
-episode :: FrozenLake -> Carlo AgentState -> Int -> [(AgentState, Action, Float)]
-episode game agent n = evalState (forM [1..n] (\_ -> agentTurn)) (game, agent)
+episode :: Int -> State (FrozenLake, Carlo AgentState) [(AgentState, Action, Float)]
+episode n = forM [1..n] (\_ -> agentTurn)
 
 -- | The resulting state of the agent/game after taking one action
 -- Notice that here we already use Carlo (Int, Int) because we must
@@ -111,13 +128,34 @@ takeAction s = do
 -- state s the action that had the largest (s, action) value
 makeGreedy :: (Ord s) => Carlo s -> Carlo s
 makeGreedy agent =
-  agent { policy = M.fromList [(s, getMaximumAction agent s) | s <- states agent]}
+  agent { policy = M.fromList $ evalState (mapM getMaximumAction (states agent)) agent }
+--  agent { policy = M.fromList [(s, getMaximumAction agent s) | s <- states agent]}
 
 -- | For a given state returns the agent with largest Q value
-getMaximumAction :: (Ord s) => Carlo s -> s -> Action
-getMaximumAction agent st =
-  maximumBy (comparing f) (actions agent)
-  where f a = fromMaybe 0 $ qValues agent M.!? (st, a)
+-- getMaximumAction :: (Ord s) => Carlo s -> s -> Action
+-- getMaximumAction agent st =
+--   maximumBy (comparing f) (actions agent)
+--   where f a = fromMaybe 0 $ qValues agent M.!? (st, a)
+
+getMaximumAction :: (Ord s) => s -> State (Carlo s) (s, Action)
+getMaximumAction st = do
+  agent <- get
+  let g = gen agent
+      ma = maxValuesBy (actions agent) (\x -> fromMaybe 0 $ qValues agent M.!? (st, x))
+      (i, ng) = sampleState (uniform 0 (-1 + length ma)) g
+      a = ma !! i
+  put $ agent {gen = ng}
+  return (st, a)
+
+maxValuesBy :: (Ord b) => [a] -> (a -> b) -> [a]
+maxValuesBy [] f = undefined
+maxValuesBy (x:xs) f =
+  go [x] xs
+  where go l [] = l
+        go l@(y:xy) (a:xa)
+          | f y < f a  = go [a] xs
+          | f y == f a = go (a:l) xa
+          | otherwise  = go l xa
 
 -- | Chooses a random element from a list
 choice :: [a] -> StdGen -> a
